@@ -91,12 +91,15 @@ generate(State0, Word, Rep) :- generate(State0, Word, Rep, 0).
 generateLen(CurrentState, Word, Rep, Len) :- generateLen(CurrentState, Word, Rep, 0, Len).
 generateLen(CurrState, Word, rep(TransT, InitS, AccT, AlphT), CurrLen, Len) :-
     Len is CurrLen,
-    !.
+    acceptState(CurrState, AccT).
 
-
-generateLen(CurrState, [X|Xs], Rep, CurrLen, Len) :-
+% generateLen(CurrState, Word, Tail, Rep, CurrLen, Len).    
+generateLen(CurrState, Word, [X|Xs], rep(TransT, InitS, AccT, AlphT), CurrLen, Len) :-
     \+ Len is CurrLen,
     transition(CurrState, X, NewState, TransT),
+    CurrLen1 is CurrLen - 1,
+    append(Word, X, Word1),
+    generateLen(CurrState, Word1, Xs, rep(TransT, InitS, AccT, AlphT), CurrLen1, Len) :-
     !.
 
 

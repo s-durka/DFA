@@ -69,7 +69,8 @@ accept(Automaton, Word) :-
     generate(InitS, Word, rep(TransT, InitS, AccT, AlphT)).
 
 % eval(CurrentState, Word, Rep).
-eval(_, [], _).
+eval(State, [], rep(TransT, InitS, AccT, AlphT)) :-
+    acceptState(State, AccT).
 eval(CurrState, [X| Xs], rep(TransT, InitS, AccT, AlphT)) :-
     transition(CurrState, X, NewState, TransT),
     eval(NewState, Xs, rep(TransT, InitS, AccT, AlphT)).
@@ -78,12 +79,28 @@ transition(S1, A, S2, TransTree) :-
     findBST((S1, SubTree), TransTree), % teraz jesteśmy w poddrzewie zawierającym przejścia ze stanu S1
     findBST((A, S2), SubTree).
 
+acceptState(State, AccTree) :-
+    findSimpleBST(State, AccTree).
+    
+
 
 % generate(CurrentState, Word, Rep).
 generate(State0, Word, Rep) :- generate(State0, Word, Rep, 0).
 
 % generateLen(CurrentState, Word, Rep, Len) :- true wtw. length(Word) == Len oraz S \in L(A)
-generateLen(CurrentState, Word, Rep, Len) :- !. %TODO
+generateLen(CurrentState, Word, Rep, Len) :- generateLen(CurrentState, Word, Rep, 0, Len).
+generateLen(CurrState, Word, rep(TransT, InitS, AccT, AlphT), CurrLen, Len) :-
+    Len is CurrLen,
+    !.
+
+
+generateLen(CurrState, [X|Xs], Rep, CurrLen, Len) :-
+    \+ Len is CurrLen,
+    transition(CurrState, X, NewState, TransT),
+    !.
+
+
+
 
 
 
@@ -135,7 +152,7 @@ addEmptyStates(TransTree, [fp(_, _, S)|Ss], TransTree2) :-
 % Funkcje pomocnicze - operacje na Binary Search Trees:
 % -----------------------------------------------------
 
-% findBST((Key, Value), BST). -- search BST ordered by the Key value
+% findBST((Key, Value), BST). -- przeszukaj drzewo BST uporządkowane przez wartość klucza Key
 findBST(X, tree(X, _L, _R)).
 % jeśli X jest określony, znajdz X:
 findBST((Key, Val), tree((RootK, _V), _L, R)) :-
@@ -153,6 +170,24 @@ findBST((Key, Val), tree(_Root, _L, R)) :-
 findBST((Key, Val), tree(_Root, L, _R)) :- 
     var(Key),
     findBST((Key, Val), L).
+
+findSimpleBST(X, tree(X, _L, _R)).
+% jeśli X jest określony, znajdz Key:
+findSimpleBST(X, tree(Root, _L, R)) :-
+    nonvar(X),
+    Root @=< X, !,
+    findSimpleBST(X, R).
+findSimpleBST(X, tree(Root, L, _R)) :-
+    nonvar(X),
+    Root @> X, !,
+    findSimpleBST(X, L).
+% jeśli X nie jest określony, generuj wszystkie wartości w drzewie:
+findSimpleBST(X, tree(_Root, _L, R)) :- 
+    var(X),
+    findSimpleBST(X, R).
+findSimpleBST(X, tree(_Root, L, _R)) :- 
+    var(X),
+    findSimpleBST(X, L).
 
 % szuka w drzewie wartości (Key, Value) wartości Value (przechodzi całe drzewo az znajdzie wartość)
 % searchValTree(Val, tree((_, Val), _L, _R)).

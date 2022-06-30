@@ -1,16 +1,18 @@
 % Zadanie zaliczeniowe 3 - Prolog
 % autor: Stanisław Durka
 % DFA (Deterministic Finite Automaton) - deterministyczny automat skończony
+% ------------------------------------------------------------------------------------------------
 
 % dfa(FunkcjaPrzejścia, StanPoczątkowy, ZbiórStanówAkceptujących)
-% FukcjaPrzejścia to lista termów postaci: fp(S1, C, S2)
+% FukcjaPrzejścia to lista postaci: [fp(S1, C, S2)|...]
 
+% ==================================== (1) ========================================================
 % correct(+Automat, -Reprezentacja)
 % Automat jest poprawną reprezentacją DFA jeśli:
 %   - kazde przejście występuje dokładnie raz
 %   - zbiór stanów akceptujących jest podzbiorem wszystkich stanów
 %   - stan początkowy nalezy do zbioru wszystkich stanów
-%   - kazdy stan ma przejscie po kazdej z liter z alfabetu, dokładnie raz --TODO
+%   - kazdy stan ma przejscie po kazdej z liter z alfabetu, dokładnie raz
 correct(dfa(Transitions, InitState, AccStates), rep(TransTree, InitState, AccTree, AlphTree)) :-
     createTransTree(Transitions, TransTree0),
     addEmptyStates(TransTree0, Transitions, TransTree),
@@ -18,7 +20,7 @@ correct(dfa(Transitions, InitState, AccStates), rep(TransTree, InitState, AccTre
     createAlphabet(Transitions, AlphTree),
     findBST((InitState, _), TransTree), % stan początkowy nalezy do zbioru wszystkich stanów
     containsKeys(AccTree, TransTree), % zbiór stanów akceptujących jest podzbiorem wszystkich stanów
-    checkFullness(TransTree, AlphTree).
+    checkFullness(TransTree, AlphTree). % sprawdzenie pełności funkcji przejścia
 
 
 % containsKeys(KeysTree, Tree) :- true wtw. zestaw kluczy KeysTree jest podzbiorem Tree
@@ -48,13 +50,41 @@ createAlphabet([], Acc, Acc) :- !.
 createAlphabet([fp(_, X, _)|Xs], Acc, Ret) :- 
     insertSimpleBST(Acc, X, Acc1), 
     createAlphabet(Xs, Acc1, Ret).
+      
+% ==================================== (2) ========================================================
+% accept(+Automat, ?Słowo) :- true wtw. gdy Słowo jest akceptowane przez Automat
 
-% accept(+Automat, ?Słowo)
-% accept(Automat, Word) :-
-%     correct(Automat, rep(TransTree, InitState, AcceptTree)),
-%     accept2(InitState, TransTree, AcceptTree, Word).
+% accept(+Automat, +Słowo)
+accept(Automaton, Word) :-
+    correct(Automaton, rep(TransT, InitS, AccT, AlphT)),
+    nonvar(Word),
+    eval(InitS, Word, rep(TransT, InitS, AccT, AlphT)).
 
-% accept2(CurrentState, TransTree, AcceptTree, [X| Xs]) :- 
+% accept(+Automat, -Słowo).
+% aby zapewnić, ze przy generacji słów nalezących do języka automat nie zapętli się,
+%   przypadek, gdy Słowo nie jest ustalone jest wyodrębniony.
+accept(Automaton, Word) :-
+    correct(Automaton, rep(TransT, InitS, AccT, AlphT)),
+    var(Word),
+    generate(InitS, Word, rep(TransT, InitS, AccT, AlphT)).
+
+% eval(CurrentState, Word, Rep).
+eval(_, [], _).
+eval(CurrState, [X| Xs], rep(TransT, InitS, AccT, AlphT)) :-
+    transition(CurrState, X, NewState, TransT),
+    eval(NewState, Xs, rep(TransT, InitS, AccT, AlphT)).
+
+transition(S1, A, S2, TransTree) :- 
+    findBST((S1, SubTree), TransTree), % teraz jesteśmy w poddrzewie zawierającym przejścia ze stanu S1
+    findBST((A, S2), SubTree).
+
+
+% generate(CurrentState, Word, Rep).
+generate(State0, Word, Rep) :- generate(State0, Word, Rep, 0).
+
+% generateLen(CurrentState, Word, Rep, Len) :- true wtw. length(Word) == Len oraz S \in L(A)
+generateLen(CurrentState, Word, Rep, Len) :- !. %TODO
+
 
 
 % empty(+Automat)
@@ -101,10 +131,11 @@ addEmptyStates(TransTree, [fp(_, _, S)|Ss], TransTree2) :-
 
 
 
-% ----------------------------------------------------
+% -----------------------------------------------------
 % Funkcje pomocnicze - operacje na Binary Search Trees:
+% -----------------------------------------------------
 
-% findBST((Key, Value), BST). -- search BST by the Key value
+% findBST((Key, Value), BST). -- search BST ordered by the Key value
 findBST(X, tree(X, _L, _R)).
 % jeśli X jest określony, znajdz X:
 findBST((Key, Val), tree((RootK, _V), _L, R)) :-
@@ -178,14 +209,6 @@ traverseTree(X, tree(X, _, _)).
 traverseTree(X, tree(_, L, R)) :-
     traverseTree(X, L);
     traverseTree(X, R).
-
-% findBST(X, tree(X, _L, _R)).
-% findBST((Key, Val), tree(_Root, _L, R)) :- 
-%     var(Key),
-%     findBST((Key, Val), R).
-% findBST((Key, Val), tree(_Root, L, _R)) :- 
-%     var(Key),
-%     findBST((Key, Val), L).
 
 % Uzywane przy tworzeniu drzewa stanow akceptujacych
 createSimpleBST(L, D) :- createSimpleBST(L, null, D).

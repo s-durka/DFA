@@ -6,11 +6,48 @@
 % FukcjaPrzejścia to lista termów postaci: fp(S1, C, S2)
 
 % correct(+Automat, -Reprezentacja)
-% poprawne DFA:
-%   kazde przejście występuje raz
-correct(dfa(Transitions, InitState, AccState), rep(TransTree, InitS, AccTree)) :-
-    createTransTree(Transitions, TransTree).
-    % createBST(AcceptStates, AccTree).    
+% Automat jest poprawną reprezentacją DFA jeśli:
+%   - kazde przejście występuje dokładnie raz
+%   - zbiór stanów akceptujących jest podzbiorem wszystkich stanów
+%   - stan początkowy nalezy do zbioru wszystkich stanów
+%   - kazdy stan ma przejscie po kazdej z liter z alfabetu, dokładnie raz --TODO
+correct(dfa(Transitions, InitState, AccStates), rep(TransTree, InitState, AccTree, AlphTree)) :-
+    createTransTree(Transitions, TransTree0),
+    addEmptyStates(TransTree0, Transitions, TransTree),
+    createSimpleBST(AccStates, AccTree),
+    createAlphabet(Transitions, AlphTree),
+    findBST((InitState, _), TransTree), % stan początkowy nalezy do zbioru wszystkich stanów
+    containsKeys(AccTree, TransTree), % zbiór stanów akceptujących jest podzbiorem wszystkich stanów
+    checkFullness(TransTree, AlphTree).
+
+
+% containsKeys(KeysTree, Tree) :- true wtw. zestaw kluczy KeysTree jest podzbiorem Tree
+% KeysTree -- (Simple) BST zawierające tylko klucze
+% Tree -- BST o elementach postaci (Klucz, Wartość)
+containsKeys(null, _).
+containsKeys(tree(Key, L, R), Tree) :-
+    findBST((Key, _), Tree),
+    containsKeys(L, Tree),
+    containsKeys(R, Tree).
+
+% checkFullness(TransTree, AlphTree).
+% TransTree - drzewo, którego kluczami są stany, a wartościami drzewa tranzycji o wartościach (Znak, StanDocelowy)
+% AlphTree - drzewo 
+% sprawdza, ze funkcja przejscia jest pełna, czyli
+%   czy alfabet automatu (AlphTree) jest podzbiorem (StateTransT) alfabetu tranzycji 
+checkFullness(null, _).
+checkFullness(tree((_State, StateTransT), L, R), AlphTree) :-
+    containsKeys(AlphTree, StateTransT),
+    checkFullness(L, AlphTree),
+    checkFullness(R, AlphTree).
+
+% createAlphabet(Transitions, AlphBST) - AlphBST - BST wszystkich liter z alfabetu
+% działa jak createSimpleBST().
+createAlphabet(L, AlphBST) :- createAlphabet(L, null, AlphBST).
+createAlphabet([], Acc, Acc) :- !.
+createAlphabet([fp(_, X, _)|Xs], Acc, Ret) :- 
+    insertSimpleBST(Acc, X, Acc1), 
+    createAlphabet(Xs, Acc1, Ret).
 
 % accept(+Automat, ?Słowo)
 % accept(Automat, Word) :-
@@ -26,15 +63,11 @@ correct(dfa(Transitions, InitState, AccState), rep(TransTree, InitS, AccTree)) :
 
 edge(S1, A, S2, Trans) :- findBST(fp(S1, A, S2), Trans). % TODO
 
-
-
 % jeśli klucz (stan) "From" jest juz w drzewie, dodajemy tranzycję (znak, stan') do jego zbioru (drzewa)
-% przy dodawaniu elementu nalezy upewnić się, ze w drzewie nie ma: 
-%   - przejscia po danym znaku (kluczu)
-%   - przejscia do tego samego stanu (wartosci)
+% przy dodawaniu elementu nalezy upewnić się, ze w drzewie nie ma: przejscia po danym znaku (kluczu)
 addTransition(StatesTree, fp(From, A, To), StatesTreeNew) :-
     findBST((From, TransitionsT), StatesTree), !, % znajdz drzewo tranzycji wychodzących ze stanu "From"
-    \+ searchValTree(To, TransitionsT), % upewnij się, ze nie ma w nim przejscia do stanu "To" po jakimkolwiek znaku
+    % \+ searchValTree(To, TransitionsT), % upewnij się, ze nie ma w nim przejscia do stanu "To" po jakimkolwiek znaku
     insertBST(TransitionsT, (A, To), TransitionsTNew), % dodaj nową tranzycję (uwaga -- jeśli wartość o danym kluczu juz istnieje, zwraca false)
     modifyBST(StatesTree, (From, TransitionsTNew), StatesTreeNew). % wstaw poddrzewo z nową tranzycją do BST stanów
 
@@ -52,6 +85,20 @@ createTransTree([T| Ts], AccTree, Ret) :-
     addTransition(AccTree, T, AccTree1), % wstaw nowe przejście do akumulatora
     createTransTree(Ts, AccTree1, Ret). % dodaj kolejne elementy listy do drzewa
 
+% addEmptyStates(TransTree, TransList, TransTreeNew).
+% dodaje stany S2(!) x listy postaci [fp(S1, X, S2)|...] do drzewa TransTree i zapisuje w TransTreeNew.
+% - Wazne dla przypadkow brzegowych, gdzie istnieją stany, od których nic nie wychodzi
+%   - wtedy takie stany nie będą dodane do TransTree przez funkcję createTransTree() !
+% po dodaniu takiego "pustego" stanu, funkcja checkFullness() sprawdzająca pełność funkcji przejścia zwróci false.
+addEmptyStates(T, [], T).
+addEmptyStates(TransTree, [fp(_, _, S)|Ss], NewTransTree) :-
+    findBST((S, _), TransTree), % stan S istnieje w drzewie TransTree,
+    addEmptyStates(TransTree, Ss, NewTransTree). % więc nic nie dodajemy.
+addEmptyStates(TransTree, [fp(_, _, S)|Ss], TransTree2) :-
+    \+ findBST((S, _), TransTree), % stanu S nie ma jako klucza w drzewie TransTree,
+    insertBST(TransTree, (S, null), TransTree1), % więc dodajemy go (drzewo tranzycji wychodzących z S jest puste)
+    addEmptyStates(TransTree1, Ss, TransTree2).
+
 
 
 % ----------------------------------------------------
@@ -68,7 +115,7 @@ findBST((Key, Val), tree((RootK, _V), L, _R)) :-
     nonvar(Key),
     RootK @> Key, !,
     findBST((Key, Val), L).
-% jeśli X nie jest określony, generuj wszystkie wartości w drzewie
+% jeśli X nie jest określony, generuj wszystkie wartości w drzewie:
 findBST((Key, Val), tree(_Root, _L, R)) :- 
     var(Key),
     findBST((Key, Val), R).
@@ -77,10 +124,10 @@ findBST((Key, Val), tree(_Root, L, _R)) :-
     findBST((Key, Val), L).
 
 % szuka w drzewie wartości (Key, Value) wartości Value (przechodzi całe drzewo az znajdzie wartość)
-searchValTree(Val, tree((_, Val), _L, _R)).
-searchValTree(Val, tree(_Root, L, R)) :- 
-    searchValTree(Val, R); 
-    searchValTree(Val, L).
+% searchValTree(Val, tree((_, Val), _L, _R)).
+% searchValTree(Val, tree(_Root, L, R)) :- 
+%     searchValTree(Val, R); 
+%     searchValTree(Val, L).
 
 % insertBST(Tree, (Key, Value), NewTree).
 % -- false jeśli w drzewie jest juz element o danym kluczu
@@ -93,7 +140,14 @@ insertBST(tree((RootK, RootV), L, R), (Key, Val), tree((RootK, RootV), L, NewR))
     Key @> RootK, 
     insertBST(R, (Key, Val), NewR).
 
-
+% tworzy drzewo BST 
+% z akumulatorem: rekursja jest ogonowa + dodaje od początku listy, 
+% czyli korzeniem jest pierwszy element
+createBST(L, D) :- createBST(L, null, D).
+createBST([], A, A) :- !.
+createBST([X|Xs], A, Ret) :- 
+    insertBST(A, X, A1), 
+    createBST(Xs, A1, Ret).
 
 % modifyBST(Tree, (Key, Value), NewTree).
 % jeśli wartość o podanym kluczu juz istnieje w drzewie, zmienia ją
@@ -107,15 +161,6 @@ modifyBST(tree((RootK, RootV), L, R), (Key, Val), tree((RootK, RootV), L, NewR))
     Key @> RootK, 
     modifyBST(R, (Key, Val), NewR).
 
-% tworzy drzewo BST 
-% z akumulatorem: rekursja jest ogonowa + dodaje od początku listy, 
-% czyli korzeniem jest pierwszy element
-createBST(L, D) :- createBST(L, null, D).
-createBST([], A, A) :- !.
-createBST([X|Xs], A, Ret) :- 
-    insertBST(A, X, A1), 
-    createBST(Xs, A1, Ret).
-
 % insertSimpleBST(BST, Value, NewBST). (klucz to jednocześnie wartość)
 % -- false jeśli w drzewie jest juz element o danym kluczu
 insertSimpleBST(null, El, tree(El, null, null)).
@@ -126,6 +171,21 @@ insertSimpleBST(tree(Root, L, R), El, tree(Root, NewL, R)) :-
 insertSimpleBST(tree(Root, L, R), El, tree(Root, L, NewR)) :- 
     El @> Root, 
     insertSimpleBST(R, El, NewR).
+
+% generuje wszystkie elementy drzewa
+% TODO nieuzywane
+traverseTree(X, tree(X, _, _)).
+traverseTree(X, tree(_, L, R)) :-
+    traverseTree(X, L);
+    traverseTree(X, R).
+
+% findBST(X, tree(X, _L, _R)).
+% findBST((Key, Val), tree(_Root, _L, R)) :- 
+%     var(Key),
+%     findBST((Key, Val), R).
+% findBST((Key, Val), tree(_Root, L, _R)) :- 
+%     var(Key),
+%     findBST((Key, Val), L).
 
 % Uzywane przy tworzeniu drzewa stanow akceptujacych
 createSimpleBST(L, D) :- createSimpleBST(L, null, D).

@@ -73,6 +73,8 @@ createTransTree([T| Ts], AccTree, Ret) :-
     addTransition(AccTree, T, AccTree1), % wstaw nowe przejście do akumulatora
     createTransTree(Ts, AccTree1, Ret). % dodaj kolejne elementy listy do drzewa
 
+% DEBUG:
+debug((From, To)).
 % addEmptyStates(TransTree, TransList, TransTreeNew).
 % dodaje stany S2(!) x listy postaci [fp(S1, X, S2)|...] do drzewa TransTree i zapisuje w TransTreeNew.
 % - Wazne dla przypadkow brzegowych, gdzie istnieją stany, od których nic nie wychodzi
@@ -174,9 +176,71 @@ equal(Automat1, Automat2) :-
     subsetEq(Automat1, Automat2).
 
 % ==================================== (5) =======================================================
-% subsetEq(+Automat1, +Automat2).
-% Odnosi sukces wtw, gdy L(Automat1) \in L(Automat2) oraz alfabety obu automatów są równe
-subsetEq(A1, A2). % TODO
+% subsetEq(+A, +B). - A, B - automaty DFA
+% Odnosi sukces wtw, gdy L(A) \in L(B) oraz alfabety obu automatów są równe
+% 1. stworz B2 t. ze L(BC) jest dopełnieniem L(B)
+% 2. stworz automat L(C) taki, ze L(C) jest przecięciem L(A) i L(B2)
+% 3. jeśli L(C) jest pusty, L(A) jest podzbiorem L(B)
+subsetEq(A, B) :-
+    correct(A, RepA),
+    correct(B, RepB),
+    complement(RepB, RepB2),
+    intersect(A, B, RepA, RepB2, RepC),
+    empty(RepC).
+
+% intersect(A, B, RepA, RepB, RepC) :- suckes jeśli RepC jest reprezentacją przecięcia automatów A i B.
+% sprawdza tez, czy alfabety A i B są równe
+intersect(dfa(TransListA, InitA, AccListA), dfa(TransListB, InitB, AccListB), 
+          rep(TransTreeA, InitA, AccTreeA, AlphTreeA), rep(TransTreeB, InitB, AccTreeB, AlphTreeB), 
+          rep(TransTreeC, (InitA, InitB), AccTreeC, AlphTreeC)) :-
+    % subsetOf(AlphTreeA, AlphTreeB),
+    % subsetOf(AlphTreeB, AlphTreeA), % alfabety automatów A i B są sobie równe
+    intersectTrans(TransListA, TransTreeB, TransListC), % stwórz listę tranzycji przeciecia A i B,
+    % print(TransListC),
+    createTransTree(TransListC, TransTreeC), % stwórz drzewo tranzycji przecięcia z listy tranzycji.
+    print(TransTreeC).    
+    % listProduct(AccListA, AccListB, AccListC), % zbiór accept(C) to iloczyn kartezjański accept(A) x accept(B)
+    % createSimpleBST(AccListC, AccTreeC).
+
+% intrs(dfa(TransA, InitA, AccA), dfa(TransB, InitB, AccB), dfa(TransC, InitC, AccC)) :-
+
+% intersectTrans(TransListA, TransTreeB, TransListAB).
+% - A, B - automaty DFA
+% TransListAB - lista tranzycji przecięcia A i B
+% intersectTrans([fp(XA, Z, YA) | TailA], TransTreeB, [fp((XA, XB), Z, (YA, YB))| Ts]) :-
+%     transition(XB, Z, YB, TransTreeB), !, % jeśli jest tez przejście po Z w B,
+%     intersectTrans(TailA, TransTreeB, Ts).
+% intersectTrans([fp(XA, Z, YA) | TailA], TransTreeB, Ts) :-
+%     intersectTrans(TailA, TransTreeB, Ts). % jeśli nie ma tranzycji, to idziemy do kolejnego el. listy
+intersectTrans([], _, []).
+intersectTrans([fp(XA, Z, YA) | TailA], TransTreeB, IntersectList) :-
+    findall(fp((XA, XB), Z, (YA, YB)), transition(XB, Z, YB, TransTreeB), L), % znajdz wszystkie przejscia po Z w B
+    intersectTrans(TailA, TransTreeB, L1),
+    append(L, L1, IntersectList).
+% intersectTrans([_| TailA], TransTreeB, Ts) :-
+%     intersectTrans(TailA, TransTreeB, Ts). % jeśli nie ma tranzycji, to idziemy do kolejnego el. listy
+
+listProduct(L1,L2,L3) :- findall((X,Y),(member(X,L1),member(Y,L2)),L3).
+
+% addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeABNew) :-
+%     acceptState(XA, AccTreeA),
+%     acceptState(XB, AccTreeB),
+%     insertSimpleBST(AccTreeAB, (XA, XB), AccTreeABNew).
+
+% addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeAB) :- 
+%     \+ acceptState(XA, AccTreeA).
+% addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeAB) :- 
+%     \+ acceptState(XB, AccTreeB).
+
+
+
+    % fp(S1, C, S2)
+% subsetOf(Tree1, Tree2) :- true wtw. zbiór kluczy w Tree1 jest podzbiorem kluczy w Tree2
+subsetOf(null, _).
+subsetOf(tree(X, L, R), Tree) :-
+    findBST(X, Tree),
+    subsetOf(L, Tree),
+    subsetOf(R, Tree).
 
 % complement(+AutRep, -AutComp) :- true wtw, gdy AutComp jest reprezentacją automatu 
 %   będącego dopełnieniem automatu o reprezentacji AutRep nad tym samym alfabetem

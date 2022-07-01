@@ -178,8 +178,30 @@ equal(Automat1, Automat2) :-
 % Odnosi sukces wtw, gdy L(Automat1) \in L(Automat2) oraz alfabety obu automatów są równe
 subsetEq(A1, A2). % TODO
 
-% compliment(+AutRep, -AutComp)
+% complement(+AutRep, -AutComp) :- true wtw, gdy AutComp jest reprezentacją automatu 
+%   będącego dopełnieniem automatu o reprezentacji AutRep nad tym samym alfabetem
+complement(rep(TransT, InitS, Acc, Alph), rep(TransT, InitS, Acc1, Alph)) :-
+    reverse(Acc, Acc1, TransT). % nowe stany akceptujące to dopełnienie oryginalnego zbioru st. akc.
 
+% wykonuje complementList i zamienia ją na drzewo BST
+reverse(SubsetT, CompT, TransT) :- 
+    complementList(SubsetT, [], CompList, TransT),
+    createSimpleBST(CompList, CompT).
+
+% complementList(Subset, Acc, ComplimentList, Tree). - odnosi suckes,
+% Subset jest drzewem BST o elementach będących podzbiorem kluczy Tree, 
+% a ComplimentList jest listą wszystkich elementów nalezących do ( Tree \ Subset );
+complementList(_, Acc, Acc, null). % Acc - akumulator; 
+complementList(Subset, Acc, CompList, tree((State, _), L, R)) :-
+    \+ findSimpleBST(State, Subset), !,              % jeśli nieprawda, ze State \in Subset,
+    complementList(Subset, [State| Acc], CL1, L),    % CL1 == (States(L) \ Subset) ++ [State| Acc]
+    complementList(Subset, CL1, CompList, R).        % CompList == (States(R) \ Subset) ++ CL1
+    % CompList jest listą wszystkich stanów z dopełnienia Subset, 
+    % które występują jako klucze w poddrzewie o korzeniu (State, _).
+complementList(Subset, Acc, CompList, tree((State, _), L, R)) :-
+    findSimpleBST(State, Subset),              % State \in Subset, więc nie dodajemy go do dopełnienia
+    complementList(Subset, Acc, CL1, L),       % CL1 == (States(L) \ Subset) ++ [State| Acc]
+    complementList(Subset, CL1, CompList, R).  % CompList == (States(R) \ Subset) ++ CL1
 
 
 

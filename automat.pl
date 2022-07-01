@@ -50,9 +50,46 @@ createAlphabet([], Acc, Acc) :- !.
 createAlphabet([fp(_, X, _)|Xs], Acc, Ret) :- 
     insertSimpleBST(Acc, X, Acc1), 
     createAlphabet(Xs, Acc1, Ret).
+
+% jeśli klucz (stan) "From" jest juz w drzewie, dodajemy tranzycję (znak, stan') do jego zbioru (drzewa)
+% przy dodawaniu elementu nalezy upewnić się, ze w drzewie nie ma: przejscia po danym znaku (kluczu)
+addTransition(StatesTree, fp(From, A, To), StatesTreeNew) :-
+    findBST((From, TransitionsT), StatesTree), !, % znajdz drzewo tranzycji wychodzących ze stanu "From"
+    % \+ searchValTree(To, TransitionsT), % upewnij się, ze nie ma w nim przejscia do stanu "To" po jakimkolwiek znaku
+    insertBST(TransitionsT, (A, To), TransitionsTNew), % dodaj nową tranzycję (uwaga -- jeśli wartość o danym kluczu juz istnieje, zwraca false)
+    modifyBST(StatesTree, (From, TransitionsTNew), StatesTreeNew). % wstaw poddrzewo z nową tranzycją do BST stanów
+
+% jeśli klucza (stanu) "From" nie ma w drzewie stanów, dodajemy go do drzewa:
+addTransition(StatesTree, fp(From, A, To), StatesTreeNew) :-
+    \+ findBST((From, _), StatesTree), !,
+    createBST([(A, To)], TransTree), % utwórz jednoelementowe drzewo z nową tranzycją
+    insertBST(StatesTree, (From, TransTree), StatesTreeNew). % dodaj parę (NowyStan, NoweDrzewo) do drzewa stanów
+
+% createTransTree(List, Tree) - List - lista przejść fp(X, A, Y), Tree - BST przejść
+createTransTree(List, Tree) :- createTransTree(List, null, Tree).
+% rozw. z akumulatorem - rekursja ogonowa:
+createTransTree([], T, T).
+createTransTree([T| Ts], AccTree, Ret) :-
+    addTransition(AccTree, T, AccTree1), % wstaw nowe przejście do akumulatora
+    createTransTree(Ts, AccTree1, Ret). % dodaj kolejne elementy listy do drzewa
+
+% addEmptyStates(TransTree, TransList, TransTreeNew).
+% dodaje stany S2(!) x listy postaci [fp(S1, X, S2)|...] do drzewa TransTree i zapisuje w TransTreeNew.
+% - Wazne dla przypadkow brzegowych, gdzie istnieją stany, od których nic nie wychodzi
+%   - wtedy takie stany nie będą dodane do TransTree przez funkcję createTransTree() !
+% po dodaniu takiego "pustego" stanu, funkcja checkFullness() sprawdzająca pełność funkcji przejścia zwróci false.
+addEmptyStates(T, [], T).
+addEmptyStates(TransTree, [fp(_, _, S)|Ss], NewTransTree) :-
+    findBST((S, _), TransTree), % stan S istnieje w drzewie TransTree,
+    addEmptyStates(TransTree, Ss, NewTransTree). % więc nic nie dodajemy.
+addEmptyStates(TransTree, [fp(_, _, S)|Ss], TransTree2) :-
+    \+ findBST((S, _), TransTree), % stanu S nie ma jako klucza w drzewie TransTree,
+    insertBST(TransTree, (S, null), TransTree1), % więc dodajemy go (drzewo tranzycji wychodzących z S jest puste)
+    addEmptyStates(TransTree1, Ss, TransTree2).
       
 % ==================================== (2) ========================================================
-% accept(+Automat, ?Słowo) :- true wtw. gdy Słowo jest akceptowane przez Automat
+% accept(+A, ?Słowo) :- true wtw. Słowo \in L(A);
+%  A - Automat FDA, Słowo - lista znaków
 
 % accept(+Automat, +Słowo)
 accept(Automaton, Word) :-
@@ -108,51 +145,41 @@ generateLen(CurrState, [X|Xs], rep(TransT, InitS, AccT, AlphT), Len) :-
     generateLen(NewState, Xs, rep(TransT, InitS, AccT, AlphT), Len1).
 
 
+% ==================================== (3) =======================================================
+% empty(+Automat) :- true wtw. gdy język generowany przez automat jest pusty
 
+% empty(dfa(Transitions, InitState, AccStates)) :-
+%     \+ member(_,AccStates) ,!. % jeśli lista stanów akceptujących jest pusta, L(A) jest pusty
+% jeśli Automat nie jest poprawną reprezentacją DFA, zwraca false
+empty(Automaton) :-
+    correct(Automaton, rep(TransT, InitS, AccT, AlphT)),
+    \+ findAPath(InitS, tree(InitS, null, null), AccT, TransT). % drzewo jednoelementowe ze stanem początkowym jest początkową wartością zbioru stanów odwiedzonych
 
+% findAPath(State, Visited, Accepting, Transitions) :- true wtw. gdy 
+% w grafie istnieje ściezka od stanu State do dowolnego stanu akceptującego
+% false wpp.            (DFS)
+findAPath(State, _, Accepting, _) :-
+    acceptState(State, Accepting), !.
+findAPath(State, Visited, Accepting, Transitions) :-
+    transition(State, _, NewState, Transitions),
+    \+ findSimpleBST(NewState, Visited), % szukamy stanu, który nie był jeszcze odwiedzony
+    insertSimpleBST(Visited, NewState, Visited1), % oznaczamy stan jako odwiedzony dla następnych iteracji
+    findAPath(NewState, Visited1, Accepting, Transitions).
 
+% ==================================== (4) =======================================================
+% equal(+Automat1, +Automat2).
+% Odnosi sukces wtw, gdy L(Automat1) = L(Automat2) oraz alfabety obu automatów są równe.
+equal(Automat1, Automat2) :- 
+    subsetEq(Automat1, Automat2),
+    subsetEq(Automat1, Automat2).
 
-% empty(+Automat)
-% equal(+Automat1, +Automat2)
-% subsetEq(+Automat1, +Automat2)
+% ==================================== (5) =======================================================
+% subsetEq(+Automat1, +Automat2).
+% Odnosi sukces wtw, gdy L(Automat1) \in L(Automat2) oraz alfabety obu automatów są równe
+subsetEq(A1, A2). % TODO
 
-edge(S1, A, S2, Trans) :- findBST(fp(S1, A, S2), Trans). % TODO
+% compliment(+AutRep, -AutComp)
 
-% jeśli klucz (stan) "From" jest juz w drzewie, dodajemy tranzycję (znak, stan') do jego zbioru (drzewa)
-% przy dodawaniu elementu nalezy upewnić się, ze w drzewie nie ma: przejscia po danym znaku (kluczu)
-addTransition(StatesTree, fp(From, A, To), StatesTreeNew) :-
-    findBST((From, TransitionsT), StatesTree), !, % znajdz drzewo tranzycji wychodzących ze stanu "From"
-    % \+ searchValTree(To, TransitionsT), % upewnij się, ze nie ma w nim przejscia do stanu "To" po jakimkolwiek znaku
-    insertBST(TransitionsT, (A, To), TransitionsTNew), % dodaj nową tranzycję (uwaga -- jeśli wartość o danym kluczu juz istnieje, zwraca false)
-    modifyBST(StatesTree, (From, TransitionsTNew), StatesTreeNew). % wstaw poddrzewo z nową tranzycją do BST stanów
-
-% jeśli klucza (stanu) "From" nie ma w drzewie stanów, dodajemy go do drzewa:
-addTransition(StatesTree, fp(From, A, To), StatesTreeNew) :-
-    \+ findBST((From, _), StatesTree), !,
-    createBST([(A, To)], TransTree), % utwórz jednoelementowe drzewo z nową tranzycją
-    insertBST(StatesTree, (From, TransTree), StatesTreeNew). % dodaj parę (NowyStan, NoweDrzewo) do drzewa stanów
-
-% createTransTree(List, Tree) - List - lista przejść fp(X, A, Y), Tree - BST przejść
-createTransTree(List, Tree) :- createTransTree(List, null, Tree).
-% rozw. z akumulatorem - rekursja ogonowa:
-createTransTree([], T, T).
-createTransTree([T| Ts], AccTree, Ret) :-
-    addTransition(AccTree, T, AccTree1), % wstaw nowe przejście do akumulatora
-    createTransTree(Ts, AccTree1, Ret). % dodaj kolejne elementy listy do drzewa
-
-% addEmptyStates(TransTree, TransList, TransTreeNew).
-% dodaje stany S2(!) x listy postaci [fp(S1, X, S2)|...] do drzewa TransTree i zapisuje w TransTreeNew.
-% - Wazne dla przypadkow brzegowych, gdzie istnieją stany, od których nic nie wychodzi
-%   - wtedy takie stany nie będą dodane do TransTree przez funkcję createTransTree() !
-% po dodaniu takiego "pustego" stanu, funkcja checkFullness() sprawdzająca pełność funkcji przejścia zwróci false.
-addEmptyStates(T, [], T).
-addEmptyStates(TransTree, [fp(_, _, S)|Ss], NewTransTree) :-
-    findBST((S, _), TransTree), % stan S istnieje w drzewie TransTree,
-    addEmptyStates(TransTree, Ss, NewTransTree). % więc nic nie dodajemy.
-addEmptyStates(TransTree, [fp(_, _, S)|Ss], TransTree2) :-
-    \+ findBST((S, _), TransTree), % stanu S nie ma jako klucza w drzewie TransTree,
-    insertBST(TransTree, (S, null), TransTree1), % więc dodajemy go (drzewo tranzycji wychodzących z S jest puste)
-    addEmptyStates(TransTree1, Ss, TransTree2).
 
 
 

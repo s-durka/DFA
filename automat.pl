@@ -73,8 +73,7 @@ createTransTree([T| Ts], AccTree, Ret) :-
     addTransition(AccTree, T, AccTree1), % wstaw nowe przejście do akumulatora
     createTransTree(Ts, AccTree1, Ret). % dodaj kolejne elementy listy do drzewa
 
-% DEBUG:
-debug((From, To)).
+
 % addEmptyStates(TransTree, TransList, TransTreeNew).
 % dodaje stany S2(!) x listy postaci [fp(S1, X, S2)|...] do drzewa TransTree i zapisuje w TransTreeNew.
 % - Wazne dla przypadkow brzegowych, gdzie istnieją stany, od których nic nie wychodzi
@@ -103,12 +102,13 @@ accept(Automaton, Word) :-
 % aby zapewnić, ze przy generacji słów nalezących do języka automat nie zapętli się,
 %   przypadek, gdy Słowo nie jest ustalone jest wyodrębniony.
 accept(Automaton, Word) :-
-    correct(Automaton, rep(TransT, InitS, AccT, AlphT)),
+    correct(Automaton, Rep),
+    id(Rep, rep(_TransT, InitS, _AccT, _AlphT)),
     var(Word),
-    generate(InitS, Word, rep(TransT, InitS, AccT, AlphT)).
+    generate(InitS, Word, Rep).
 
 % eval(CurrentState, Word, Rep).
-eval(State, [], rep(TransT, InitS, AccT, AlphT)) :-
+eval(State, [], rep(_TransT, _InitS, AccT, _AlphT)) :-
     acceptState(State, AccT).
 eval(CurrState, [X| Xs], rep(TransT, InitS, AccT, AlphT)) :-
     transition(CurrState, X, NewState, TransT),
@@ -154,7 +154,7 @@ generateLen(CurrState, [X|Xs], rep(TransT, InitS, AccT, AlphT), Len) :-
 %     \+ member(_,AccStates) ,!. % jeśli lista stanów akceptujących jest pusta, L(A) jest pusty
 % jeśli Automat nie jest poprawną reprezentacją DFA, zwraca false
 empty(Automaton) :-
-    correct(Automaton, rep(TransT, InitS, AccT, AlphT)),
+    correct(Automaton, rep(TransT, InitS, AccT, _AlphT)),
     \+ findAPath(InitS, tree(InitS, null, null), AccT, TransT). % drzewo jednoelementowe ze stanem początkowym jest początkową wartością zbioru stanów odwiedzonych
 
 % findAPath(State, Visited, Accepting, Transitions) :- true wtw. gdy 
@@ -181,28 +181,51 @@ equal(Automat1, Automat2) :-
 % 1. stworz B2 t. ze L(BC) jest dopełnieniem L(B)
 % 2. stworz automat L(C) taki, ze L(C) jest przecięciem L(A) i L(B2)
 % 3. jeśli L(C) jest pusty, L(A) jest podzbiorem L(B)
+%       correct(dfa(Transitions, InitState, AccStates), rep(TransTree, InitState, AccTree, AlphTree))
 subsetEq(A, B) :-
-    correct(A, RepA),
-    correct(B, RepB),
-    complement(RepB, RepB2),
-    intersect(A, B, RepA, RepB2, RepC),
+    % correct(A, RepA), % -- nie trzeba sprawdzane w intersect(A, B)
+    correct(B, rep(TransTreeB, InitB, AccTreeB, _AlphTreeB)), % spr., ze B jest poprawną definicją DFA
+    id(B, dfa(TransListB, InitB, _AcceptListB)),
+    complementList(AccTreeB, AcceptListB2, TransTreeB), % AcceptListB2 jest teraz listą stanów akceptujących dopełnienia B
+    id(B2, dfa(TransListB, InitB, AcceptListB2)), %  B2 == dopełnienie B
+    intersect(A, B2, RepC),
+    id(RepC, rep(Trans, Init, Accept, Alphabet)).
     empty(RepC).
 
 % intersect(A, B, RepA, RepB, RepC) :- suckes jeśli RepC jest reprezentacją przecięcia automatów A i B.
-% sprawdza tez, czy alfabety A i B są równe
-intersect(dfa(TransListA, InitA, AccListA), dfa(TransListB, InitB, AccListB), 
-          rep(TransTreeA, InitA, AccTreeA, AlphTreeA), rep(TransTreeB, InitB, AccTreeB, AlphTreeB), 
-          rep(TransTreeC, (InitA, InitB), AccTreeC, AlphTreeC)) :-
-    % subsetOf(AlphTreeA, AlphTreeB),
-    % subsetOf(AlphTreeB, AlphTreeA), % alfabety automatów A i B są sobie równe
+% sprawdza tez, czy alfabety A i B są równe TODO
+% sprawdza tez, czy A i B są poprawnymi DFA
+intersect(A, B, rep(TransTreeC, [InitA, InitB], AccTreeC, AlphTreeA)) :-
+    correct(A, rep(_TransTreeA, InitA, _AccTreeA, AlphTreeA)),
+    correct(B, rep(TransTreeB, InitB, _AccTreeB, AlphTreeB)),
+    subsetOf(AlphTreeA, AlphTreeB),
+    subsetOf(AlphTreeB, AlphTreeA), % alfabety automatów A i B są sobie równe
+    id(A, dfa(TransListA, _, AccListA)),
+    id(B, dfa(_, _, AccListB)),
     intersectTrans(TransListA, TransTreeB, TransListC), % stwórz listę tranzycji przeciecia A i B,
-    % print(TransListC),
     createTransTree(TransListC, TransTreeC), % stwórz drzewo tranzycji przecięcia z listy tranzycji.
-    print(TransTreeC).    
-    % listProduct(AccListA, AccListB, AccListC), % zbiór accept(C) to iloczyn kartezjański accept(A) x accept(B)
-    % createSimpleBST(AccListC, AccTreeC).
+    listProduct(AccListA, AccListB, AccListC), % zbiór accept(C) to iloczyn kartezjański accept(A) x accept(B)
+    createSimpleBST(AccListC, AccTreeC).
 
-% intrs(dfa(TransA, InitA, AccA), dfa(TransB, InitB, AccB), dfa(TransC, InitC, AccC)) :-
+
+% complementList(SubsetT, ComplimentList, Tree). - odnosi suckes, jeśli
+% SubsetT jest drzewem BST o elementach będących podzbiorem kluczy Tree, 
+% a CompList jest listą wszystkich elementów nalezących do ( Tree \ Subset );
+complementList(SubsetT, CompList, TransT) :-
+    complementList(SubsetT, [], CompList, TransT).
+
+complementList(_, Acc, Acc, null). % Acc - akumulator; 
+complementList(Subset, Acc, CompList, tree((State, _), L, R)) :-
+    \+ findSimpleBST(State, Subset), !,              % jeśli nieprawda, ze State \in Subset,
+    complementList(Subset, [State| Acc], CL1, L),    % CL1 == (States(L) \ Subset) ++ [State| Acc]
+    complementList(Subset, CL1, CompList, R).        % CompList == (States(R) \ Subset) ++ CL1
+    % CompList jest listą wszystkich stanów z dopełnienia Subset, 
+    % które występują jako klucze w poddrzewie o korzeniu (State, _).
+complementList(Subset, Acc, CompList, tree((State, _), L, R)) :-
+    findSimpleBST(State, Subset),              % State \in Subset, więc nie dodajemy go do dopełnienia
+    complementList(Subset, Acc, CL1, L),       % CL1 == (States(L) \ Subset) ++ [State| Acc]
+    complementList(Subset, CL1, CompList, R).  % CompList == (States(R) \ Subset) ++ CL1
+
 
 % intersectTrans(TransListA, TransTreeB, TransListAB).
 % - A, B - automaty DFA
@@ -214,13 +237,11 @@ intersect(dfa(TransListA, InitA, AccListA), dfa(TransListB, InitB, AccListB),
 %     intersectTrans(TailA, TransTreeB, Ts). % jeśli nie ma tranzycji, to idziemy do kolejnego el. listy
 intersectTrans([], _, []).
 intersectTrans([fp(XA, Z, YA) | TailA], TransTreeB, IntersectList) :-
-    findall(fp((XA, XB), Z, (YA, YB)), transition(XB, Z, YB, TransTreeB), L), % znajdz wszystkie przejscia po Z w B
+    findall(fp([XA, XB], Z, [YA, YB]), transition(XB, Z, YB, TransTreeB), L), % znajdz wszystkie przejscia po Z w B
     intersectTrans(TailA, TransTreeB, L1),
     append(L, L1, IntersectList).
-% intersectTrans([_| TailA], TransTreeB, Ts) :-
-%     intersectTrans(TailA, TransTreeB, Ts). % jeśli nie ma tranzycji, to idziemy do kolejnego el. listy
 
-listProduct(L1,L2,L3) :- findall((X,Y),(member(X,L1),member(Y,L2)),L3).
+listProduct(L1,L2,L3) :- findall([X,Y],(member(X,L1),member(Y,L2)),L3).
 
 % addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeABNew) :-
 %     acceptState(XA, AccTreeA),
@@ -238,41 +259,30 @@ listProduct(L1,L2,L3) :- findall((X,Y),(member(X,L1),member(Y,L2)),L3).
 % subsetOf(Tree1, Tree2) :- true wtw. zbiór kluczy w Tree1 jest podzbiorem kluczy w Tree2
 subsetOf(null, _).
 subsetOf(tree(X, L, R), Tree) :-
-    findBST(X, Tree),
+    findSimpleBST(X, Tree),
     subsetOf(L, Tree),
     subsetOf(R, Tree).
 
-% complement(+AutRep, -AutComp) :- true wtw, gdy AutComp jest reprezentacją automatu 
-%   będącego dopełnieniem automatu o reprezentacji AutRep nad tym samym alfabetem
-complement(rep(TransT, InitS, Acc, Alph), rep(TransT, InitS, Acc1, Alph)) :-
-    reverse(Acc, Acc1, TransT). % nowe stany akceptujące to dopełnienie oryginalnego zbioru st. akc.
+% complement(+AutRep, -CompRep) :- true wtw, gdy CompRep jest reprezentacją automatu 
+% będącego dopełnieniem automatu o reprezentacji AutRep nad tym samym alfabetem.
+% complement(rep(TransT, InitS, Acc, Alph), rep(TransT, InitS, Acc1, Alph)
+%             dfa) :-
+    % complementList(SubsetT, CompList, TransT), % nowe stany akceptujące to dopełnienie zbioru st. akc. Aut
+    % reverse(Acc, Acc1, TransT). 
 
 % wykonuje complementList i zamienia ją na drzewo BST
-reverse(SubsetT, CompT, TransT) :- 
-    complementList(SubsetT, [], CompList, TransT),
-    createSimpleBST(CompList, CompT).
+% reverse(SubsetT, CompT, TransT) :- 
+%     complementList(SubsetT, CompList, TransT),
+%     createSimpleBST(CompList, CompT).
 
-% complementList(Subset, Acc, ComplimentList, Tree). - odnosi suckes,
-% Subset jest drzewem BST o elementach będących podzbiorem kluczy Tree, 
-% a ComplimentList jest listą wszystkich elementów nalezących do ( Tree \ Subset );
-complementList(_, Acc, Acc, null). % Acc - akumulator; 
-complementList(Subset, Acc, CompList, tree((State, _), L, R)) :-
-    \+ findSimpleBST(State, Subset), !,              % jeśli nieprawda, ze State \in Subset,
-    complementList(Subset, [State| Acc], CL1, L),    % CL1 == (States(L) \ Subset) ++ [State| Acc]
-    complementList(Subset, CL1, CompList, R).        % CompList == (States(R) \ Subset) ++ CL1
-    % CompList jest listą wszystkich stanów z dopełnienia Subset, 
-    % które występują jako klucze w poddrzewie o korzeniu (State, _).
-complementList(Subset, Acc, CompList, tree((State, _), L, R)) :-
-    findSimpleBST(State, Subset),              % State \in Subset, więc nie dodajemy go do dopełnienia
-    complementList(Subset, Acc, CL1, L),       % CL1 == (States(L) \ Subset) ++ [State| Acc]
-    complementList(Subset, CL1, CompList, R).  % CompList == (States(R) \ Subset) ++ CL1
 
 
 
 % -----------------------------------------------------
-% Funkcje pomocnicze - operacje na Binary Search Trees:
+% Funkcje pomocnicze
 % -----------------------------------------------------
-
+id(X,X). % identity
+% - operacje na Binary Search Trees:
 % findBST((Key, Value), BST). -- przeszukaj drzewo BST uporządkowane przez wartość klucza Key
 findBST(X, tree(X, _L, _R)).
 % jeśli X jest określony, znajdz X:

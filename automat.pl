@@ -1,10 +1,19 @@
-% Zadanie zaliczeniowe 3 - Prolog
+% Zadanie zaliczeniowe 3 - Prolog, JPP MIMUW
 % autor: Stanisław Durka
 % DFA (Deterministic Finite Automaton) - deterministyczny automat skończony
 % ------------------------------------------------------------------------------------------------
 
-% dfa(FunkcjaPrzejścia, StanPoczątkowy, ZbiórStanówAkceptujących)
-% FukcjaPrzejścia to lista postaci: [fp(S1, C, S2)|...]
+% reprezentacja automatów FDA (zaimplementowana w correct(+Automat, -Reprezentacja)) opiera się
+% na drzewach BST. Optymalnym rozwiązaniem oczywiście byłyby zrównowazone drzewa binarne AVL,
+% (w pesymistycznym przypadku, koszt wyszukiwania kluczu w BST będącym listą będzie liniowy 
+% ze wzgl. na liczbę wierzchołków).
+% Natomiast na omówieniu zadania było powiedziane, ze takie rozwiązanie nie jest wymagane.
+% 
+% Drzewo tranzycji jest BST o elementach potaci (Stan1, DrzewoTranzycji), gdzie Stan1 jest kluczem,
+% a DrzewoTranzycji jest BST o elementach postaci (Znak, Stan2), gdzie Znak jest kluczem, oraz
+% fp(Stan1, Znak, Stan2) nalezą do funkcji przejścia automatu.
+% Dodatkowo, zbiory stanów akceptujących oraz alfabet równiez są zapisywane w drzewach BST,
+% zawierających odpowiednio stany i alfabet jako elementy i jednocześnie klucze ("SimpleBST").
 
 % ==================================== (1) ========================================================
 % correct(+Automat, -Reprezentacja)
@@ -55,7 +64,6 @@ createAlphabet([fp(_, X, _)|Xs], Acc, Ret) :-
 % przy dodawaniu elementu nalezy upewnić się, ze w drzewie nie ma: przejscia po danym znaku (kluczu)
 addTransition(StatesTree, fp(From, A, To), StatesTreeNew) :-
     findBST((From, TransitionsT), StatesTree), !, % znajdz drzewo tranzycji wychodzących ze stanu "From"
-    % \+ searchValTree(To, TransitionsT), % upewnij się, ze nie ma w nim przejscia do stanu "To" po jakimkolwiek znaku
     insertBST(TransitionsT, (A, To), TransitionsTNew), % dodaj nową tranzycję (uwaga -- jeśli wartość o danym kluczu juz istnieje, zwraca false)
     modifyBST(StatesTree, (From, TransitionsTNew), StatesTreeNew). % wstaw poddrzewo z nową tranzycją do BST stanów
 
@@ -120,9 +128,6 @@ transition(S1, A, S2, TransTree) :-
 
 acceptState(State, AccTree) :-
     findSimpleBST(State, AccTree).
-    
-% TODO zeby generateLen informowal jakos (fail?), jak nie ma juz tranzycji?
-% jesli język jest skończony czy nie będzie się petlił teraz?
 
 % generate(CurrentState, Word, Rep).
 generate(State0, Word, Rep) :- generate(State0, Word, Rep, 1).
@@ -149,12 +154,14 @@ generateLen(CurrState, [X|Xs], rep(TransT, InitS, AccT, AlphT), Len) :-
 
 % ==================================== (3) =======================================================
 % empty(+Automat) :- true wtw. gdy język generowany przez automat jest pusty
-
-% empty(dfa(Transitions, InitState, AccStates)) :-
-%     \+ member(_,AccStates) ,!. % jeśli lista stanów akceptujących jest pusta, L(A) jest pusty
+empty(dfa(_, _, AccStates)) :- % TODO 
+    \+ member(_,AccStates) ,!. % jeśli lista stanów akceptujących jest pusta, L(A) jest pusty
 % jeśli Automat nie jest poprawną reprezentacją DFA, zwraca false
 empty(Automaton) :-
     correct(Automaton, rep(TransT, InitS, AccT, _AlphT)),
+    \+ findAPath(InitS, tree(InitS, null, null), AccT, TransT). % drzewo jednoelementowe ze stanem początkowym jest początkową wartością zbioru stanów odwiedzonych
+
+emptyRep(rep(TransT, InitS, AccT, _AlphT)) :-
     \+ findAPath(InitS, tree(InitS, null, null), AccT, TransT). % drzewo jednoelementowe ze stanem początkowym jest początkową wartością zbioru stanów odwiedzonych
 
 % findAPath(State, Visited, Accepting, Transitions) :- true wtw. gdy 
@@ -189,8 +196,8 @@ subsetEq(A, B) :-
     complementList(AccTreeB, AcceptListB2, TransTreeB), % AcceptListB2 jest teraz listą stanów akceptujących dopełnienia B
     id(B2, dfa(TransListB, InitB, AcceptListB2)), %  B2 == dopełnienie B
     intersect(A, B2, RepC),
-    id(RepC, rep(Trans, Init, Accept, Alphabet)).
-    empty(RepC).
+    % id(RepC, rep(Trans, Init, Accept, Alphabet)),
+    emptyRep(RepC).
 
 % intersect(A, B, RepA, RepB, RepC) :- suckes jeśli RepC jest reprezentacją przecięcia automatów A i B.
 % sprawdza tez, czy alfabety A i B są równe TODO
@@ -243,19 +250,6 @@ intersectTrans([fp(XA, Z, YA) | TailA], TransTreeB, IntersectList) :-
 
 listProduct(L1,L2,L3) :- findall([X,Y],(member(X,L1),member(Y,L2)),L3).
 
-% addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeABNew) :-
-%     acceptState(XA, AccTreeA),
-%     acceptState(XB, AccTreeB),
-%     insertSimpleBST(AccTreeAB, (XA, XB), AccTreeABNew).
-
-% addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeAB) :- 
-%     \+ acceptState(XA, AccTreeA).
-% addInterceptAcceptState(AccTreeAB, XA, XB, AccTreeA, AccTreeB, AccTreeAB) :- 
-%     \+ acceptState(XB, AccTreeB).
-
-
-
-    % fp(S1, C, S2)
 % subsetOf(Tree1, Tree2) :- true wtw. zbiór kluczy w Tree1 jest podzbiorem kluczy w Tree2
 subsetOf(null, _).
 subsetOf(tree(X, L, R), Tree) :-
@@ -263,26 +257,13 @@ subsetOf(tree(X, L, R), Tree) :-
     subsetOf(L, Tree),
     subsetOf(R, Tree).
 
-% complement(+AutRep, -CompRep) :- true wtw, gdy CompRep jest reprezentacją automatu 
-% będącego dopełnieniem automatu o reprezentacji AutRep nad tym samym alfabetem.
-% complement(rep(TransT, InitS, Acc, Alph), rep(TransT, InitS, Acc1, Alph)
-%             dfa) :-
-    % complementList(SubsetT, CompList, TransT), % nowe stany akceptujące to dopełnienie zbioru st. akc. Aut
-    % reverse(Acc, Acc1, TransT). 
-
-% wykonuje complementList i zamienia ją na drzewo BST
-% reverse(SubsetT, CompT, TransT) :- 
-%     complementList(SubsetT, CompList, TransT),
-%     createSimpleBST(CompList, CompT).
 
 
-
-
-% -----------------------------------------------------
-% Funkcje pomocnicze
-% -----------------------------------------------------
 id(X,X). % identity
-% - operacje na Binary Search Trees:
+
+% -----------------------------------------------------
+% Funkcje pomocnicze - operacje na Binary Search Trees:
+% -----------------------------------------------------
 % findBST((Key, Value), BST). -- przeszukaj drzewo BST uporządkowane przez wartość klucza Key
 findBST(X, tree(X, _L, _R)).
 % jeśli X jest określony, znajdz X:
@@ -320,11 +301,6 @@ findSimpleBST(X, tree(_Root, L, _R)) :-
     var(X),
     findSimpleBST(X, L).
 
-% szuka w drzewie wartości (Key, Value) wartości Value (przechodzi całe drzewo az znajdzie wartość)
-% searchValTree(Val, tree((_, Val), _L, _R)).
-% searchValTree(Val, tree(_Root, L, R)) :- 
-%     searchValTree(Val, R); 
-%     searchValTree(Val, L).
 
 % insertBST(Tree, (Key, Value), NewTree).
 % -- false jeśli w drzewie jest juz element o danym kluczu
@@ -369,13 +345,6 @@ insertSimpleBST(tree(Root, L, R), El, tree(Root, L, NewR)) :-
     El @> Root, 
     insertSimpleBST(R, El, NewR).
 
-% generuje wszystkie elementy drzewa
-% TODO nieuzywane
-traverseTree(X, tree(X, _, _)).
-traverseTree(X, tree(_, L, R)) :-
-    traverseTree(X, L);
-    traverseTree(X, R).
-
 % Uzywane przy tworzeniu drzewa stanow akceptujacych
 createSimpleBST(L, D) :- createSimpleBST(L, null, D).
 createSimpleBST([], A, A) :- !.
@@ -383,6 +352,7 @@ createSimpleBST([X|Xs], A, Ret) :-
     insertSimpleBST(A, X, A1), 
     createSimpleBST(Xs, A1, Ret).
 
+% Przykładowe automaty:
 % example(IdentyfikatorAutomatu, Automat)
 example(a11, dfa([fp(1,a,1),fp(1,b,2),fp(2,a,2),fp(2,b,1)], 1, [2,1])).
 example(a12, dfa([fp(x,a,y),fp(x,b,x),fp(y,a,x),fp(y,b,x)], x, [x,y])).
@@ -391,9 +361,7 @@ example(a3, dfa([fp(0,a,1),fp(1,a,0)], 0, [0])).
 example(a4, dfa([fp(x,a,y),fp(y,a,z),fp(z,a,x)], x, [x])).
 example(a5, dfa([fp(x,a,y),fp(y,a,z),fp(z,a,zz),fp(zz,a,x)], x, [x])).
 example(a6, dfa([fp(1,a,1),fp(1,b,2),fp(2,a,2),fp(2,b,1)], 1, [])).
-example(a7, dfa([fp(1,a,1),fp(1,b,2),fp(2,a,2),fp(2,b,1),
-
-fp(3,b,3),fp(3,a,3)], 1, [3])).
+example(a7, dfa([fp(1,a,1),fp(1,b,2),fp(2,a,2),fp(2,b,1),fp(3,b,3),fp(3,a,3)], 1, [3])).
 % bad ones
 example(b1, dfa([fp(1,a,1),fp(1,a,1)], 1, [])).
 example(b2, dfa([fp(1,a,1),fp(1,a,2)], 1, [])).

@@ -82,25 +82,30 @@ transition(S1, A, S2, TransTree) :-
 acceptState(State, AccTree) :-
     findSimpleBST(State, AccTree).
     
-
+% TODO zeby generateLen informowal jakos (fail?), jak nie ma juz tranzycji?
+% jesli język jest skończony czy nie będzie się petlił teraz?
 
 % generate(CurrentState, Word, Rep).
-generate(State0, Word, Rep) :- generate(State0, Word, Rep, 0).
+generate(State0, Word, Rep) :- generate(State0, Word, Rep, 1).
+generate(State, Word, Rep, Len) :- 
+    generateLen(State, Word, Rep, Len).
+generate(State, Word, Rep, Len) :- 
+    Len1 is Len + 1,
+    % Len1 < 10, % DEBUG
+    generate(State, Word, Rep, Len1).
+
 
 % generateLen(CurrentState, Word, Rep, Len) :- true wtw. length(Word) == Len oraz S \in L(A)
-generateLen(CurrentState, Word, Rep, Len) :- generateLen(CurrentState, Word, Rep, 0, Len).
-generateLen(CurrState, Word, rep(TransT, InitS, AccT, AlphT), CurrLen, Len) :-
-    Len is CurrLen,
+generateLen(CurrState, [], rep(_TransT, _InitS, AccT, _AlphT), Len) :-
+    0 is Len, !,
     acceptState(CurrState, AccT).
 
-% generateLen(CurrState, Word, Tail, Rep, CurrLen, Len).    
-generateLen(CurrState, Word, [X|Xs], rep(TransT, InitS, AccT, AlphT), CurrLen, Len) :-
-    \+ Len is CurrLen,
+% generateLen(CurrState, Word, Tail, Rep, CurrLen, Len).     
+generateLen(CurrState, [X|Xs], rep(TransT, InitS, AccT, AlphT), Len) :-
+    \+ Len is 0,
     transition(CurrState, X, NewState, TransT),
-    CurrLen1 is CurrLen - 1,
-    append(Word, X, Word1),
-    generateLen(CurrState, Word1, Xs, rep(TransT, InitS, AccT, AlphT), CurrLen1, Len) :-
-    !.
+    Len1 is Len - 1,
+    generateLen(NewState, Xs, rep(TransT, InitS, AccT, AlphT), Len1).
 
 
 

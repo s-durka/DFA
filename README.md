@@ -1,2 +1,2 @@
 # DFA
-Deterministic Finite Automaton implementation in Prolog
+[Deterministic Finite Automaton](https://en.wikipedia.org/wiki/Deterministic_finite_automaton) implementation in Prolog
